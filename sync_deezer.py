@@ -57,7 +57,7 @@ def sync():
     batch_size = 100
     for i in range(0, len(records), batch_size):
         batch = records[i:i + batch_size]
-        supabase.table("deezer_favorites").upsert(batch, on_conflict="id").execute()
+        supabase.table("tbl_deezer_favorites").upsert(batch, on_conflict="id").execute()
         
     print("Sincronização concluída com sucesso!")
 
