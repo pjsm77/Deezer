@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone
 import requests
 from supabase import create_client, Client
 
@@ -24,6 +25,15 @@ def fetch_all_favorites(user_id):
             
     return tracks
 
+def parse_timestamp(ts):
+    """Converte o timestamp Unix da Deezer para formato ISO UTC aceito pelo Postgres"""
+    if not ts:
+        return None
+    try:
+        return datetime.fromtimestamp(int(ts), tz=timezone.utc).isoformat()
+    except (ValueError, TypeError):
+        return None
+
 def sync():
     print("Buscando favoritos no Deezer...")
     raw_tracks = fetch_all_favorites(USER_ID)
@@ -47,13 +57,13 @@ def sync():
             "album_id": item.get("album", {}).get("id"),
             "album_title": item.get("album", {}).get("title"),
             "album_cover": item.get("album", {}).get("cover_medium"),
-            "time_add": item.get("time_add"),
+            "time_add": parse_timestamp(item.get("time_add")),
             "raw_data": item,
-            "updated_at": "now()"
+            "updated_at": datetime.now(timezone.utc).isoformat()
         }
         records.append(record)
 
-    # Upsert em lotes de 100
+    # Upsert em lotes de 100 registros na tabela correta
     batch_size = 100
     for i in range(0, len(records), batch_size):
         batch = records[i:i + batch_size]
