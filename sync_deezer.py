@@ -11,22 +11,35 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def fetch_all_favorites(user_id):
     tracks = []
-    url = f"https://api.deezer.com/user/{user_id}/tracks?limit=100"
+    limit = 100
+    index = 0
     
-    while url:
+    while True:
+        url = f"https://api.deezer.com/user/{user_id}/tracks?limit={limit}&index={index}"
         response = requests.get(url)
-        data = response.json()
         
-        if "data" in data:
-            tracks.extend(data["data"])
-            url = data.get("paging", {}).get("next")
-        else:
+        if response.status_code != 200:
+            print(f"Erro na requisição: {response.status_code}")
             break
+            
+        data = response.json()
+        items = data.get("data", [])
+        
+        if not items:
+            break
+            
+        tracks.extend(items)
+        print(f"Buscados {len(tracks)} de {data.get('total', '?')}...")
+        
+        # Se a quantidade retornada for menor que o limite, chegamos ao fim
+        if len(items) < limit:
+            break
+            
+        index += limit
             
     return tracks
 
 def parse_timestamp(ts):
-    """Converte o timestamp Unix da Deezer para formato ISO UTC aceito pelo Postgres"""
     if not ts:
         return None
     try:
@@ -35,7 +48,7 @@ def parse_timestamp(ts):
         return None
 
 def sync():
-    print("Buscando favoritos no Deezer...")
+    print("Iniciando busca completa de favoritos no Deezer...")
     raw_tracks = fetch_all_favorites(USER_ID)
     print(f"Total de músicas encontradas: {len(raw_tracks)}")
     
@@ -63,13 +76,14 @@ def sync():
         }
         records.append(record)
 
-    # Upsert em lotes de 100 registros na tabela correta
+    # Envia em lotes de 100 para o Supabase
     batch_size = 100
     for i in range(0, len(records), batch_size):
         batch = records[i:i + batch_size]
         supabase.table("tbl_deezer_favorites").upsert(batch, on_conflict="id").execute()
+        print(f"Enviado lote {i // batch_size + 1} ({len(batch)} registros)")
         
-    print("Sincronização concluída com sucesso!")
+    print("Sincronização completa realizada com sucesso!")
 
 if __name__ == "__main__":
     sync()
