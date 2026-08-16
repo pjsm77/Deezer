@@ -2,7 +2,7 @@ import os
 import requests
 from supabase import create_client, Client
 
-USER_ID = os.environ.get("450707713")
+USER_ID = os.environ.get("DEEZER_USER_ID")
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 
