@@ -73,18 +73,21 @@ def update_outdated_playlist(token):
 
     novas_faixas = [str(item["id"]) for item in res.data]
 
-    # 1. Pega as faixas que estão atualmente na playlist para apagá-las
-    res_atuais = requests.get(f"https://api.deezer.com/playlist/{PLAYLIST_ID_FIXA}/tracks?access_token={token}&limit=100")
-    faixas_atuais = [str(t['id']) for t in res_atuais.json().get('data', [])]
+    # 1. Pega os IDs atuais presentes na playlist
+    res_atuais = requests.get(f"https://api.deezer.com/playlist/{PLAYLIST_ID_FIXA}/tracks?access_token={token}&limit=100").json()
+    faixas_atuais = [str(t['id']) for t in res_atuais.get('data', [])]
 
-    # 2. Deleta as faixas antigas (O Deezer exige o método DELETE com os IDs)
+    # 2. Se houver faixas antigas, remove todas de uma vez
     if faixas_atuais:
-        requests.delete(f"https://api.deezer.com/playlist/{PLAYLIST_ID_FIXA}/tracks?access_token={token}&songs={','.join(faixas_atuais)}")
+        del_url = f"https://api.deezer.com/playlist/{PLAYLIST_ID_FIXA}/tracks?access_token={token}&songs={','.join(faixas_atuais)}"
+        requests.delete(del_url)
 
-    # 3. Insere as 50 faixas atrasadas limpinhas na playlist
-    requests.post(f"https://api.deezer.com/playlist/{PLAYLIST_ID_FIXA}/tracks?access_token={token}&songs={','.join(novas_faixas)}")
+    # 3. Adiciona as 50 faixas mais atrasadas do dia
+    add_url = f"https://api.deezer.com/playlist/{PLAYLIST_ID_FIXA}/tracks?access_token={token}&songs={','.join(novas_faixas)}"
+    response_add = requests.post(add_url)
+    
+    print(f"Resposta da API Deezer: {response_add.text}")
     print(f"Playlist ID {PLAYLIST_ID_FIXA} atualizada com {len(novas_faixas)} faixas!")
-
 def parse_timestamp(ts):
     if not ts: return None
     try: return datetime.fromtimestamp(int(ts), tz=timezone.utc).isoformat()
