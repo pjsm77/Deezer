@@ -8,7 +8,7 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 DEEZER_ARL_COOKIE = os.environ.get("DEEZER_ARL_COOKIE")
 
-# COLOQUE O ID NUMÉRICO DA SUA PLAYLIST AQUI
+# COLOQUE O ID NUMÉRICO DA SUA PLAYLIST '!! Favoritas mais atrasadas' AQUI
 PLAYLIST_ID_FIXA = "15652964743"
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -20,21 +20,28 @@ def get_fresh_token():
         return None
     
     session = requests.Session()
-    session.cookies.set('arl', DEEZER_ARL_COOKIE.strip(), domain='.deezer.com')
+    arl_clean = DEEZER_ARL_COOKIE.strip()
+    session.cookies.set('arl', arl_clean, domain='.deezer.com')
     
     # App ID 164115 (API Explorer Oficial do Deezer)
     auth_url = "https://connect.deezer.com/oauth/auth.php?app_id=164115&redirect_uri=https://developers.deezer.com/api/explorer&perms=basic_access,manage_library,delete_library&response_type=token"
     
-    response = session.get(auth_url, allow_redirects=False)
+    response = session.get(auth_url, allow_redirects=True)
     
-    if response.status_code in (301, 302):
-        location = response.headers.get('Location', '')
-        if 'access_token=' in location:
-            token = location.split('access_token=')[1].split('&')[0]
-            print("Token temporário do Deezer gerado com sucesso!")
-            return token
-            
-    print(f"Erro ao gerar token. Status HTTP: {response.status_code}. Verifique o ARL Cookie.")
+    # 1. Tenta extrair o token da URL de redirecionamento final
+    final_url = response.url
+    if 'access_token=' in final_url:
+        token = final_url.split('access_token=')[1].split('&')[0]
+        print("Token do Deezer gerado com sucesso via URL!")
+        return token
+        
+    # 2. Tenta extrair o token do corpo HTML se o status foi 200
+    if 'access_token=' in response.text:
+        token = response.text.split('access_token=')[1].split('&')[0].split('"')[0].split("'")[0]
+        print("Token do Deezer gerado com sucesso via HTML!")
+        return token
+
+    print(f"Erro ao gerar token. Status HTTP: {response.status_code}. O ARL Cookie pode ter expirado.")
     return None
 
 def fetch_all_favorites(user_id):
