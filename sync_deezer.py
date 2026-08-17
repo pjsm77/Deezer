@@ -31,7 +31,6 @@ def fetch_all_favorites(user_id):
         tracks.extend(items)
         print(f"Buscados {len(tracks)} de {data.get('total', '?')} favoritos...")
         
-        # Se a quantidade retornada for menor que o limite, chegamos ao fim da lista
         if len(items) < limit:
             break
             
@@ -40,7 +39,6 @@ def fetch_all_favorites(user_id):
     return tracks
 
 def parse_timestamp(ts):
-    """Converte o timestamp Unix da Deezer para formato ISO UTC aceito pelo Postgres"""
     if not ts:
         return None
     try:
@@ -77,22 +75,21 @@ def sync():
         }
         records.append(record)
 
-    # 1. Upsert em lotes de 100 registros na tabela física
+    # 1. Upsert na tabela física
     batch_size = 100
     for i in range(0, len(records), batch_size):
         batch = records[i:i + batch_size]
         supabase.table("tbl_deezer_favorites").upsert(batch, on_conflict="id").execute()
-        print(f"Enviado lote {i // batch_size + 1} ({len(batch)} registros)")
         
-    print("Tabela tbl_deezer_favorites atualizada com sucesso!")
+    print("Tabela tbl_deezer_favorites atualizada!")
 
-    # 2. Atualiza a Materialized View no Supabase
+    # 2. Atualiza a Materialized View
     try:
-        print("Atualizando Materialized View (vw_deezer_favorites_scrobbles)...")
+        print("Atualizando Materialized View...")
         supabase.rpc("refresh_deezer_view").execute()
-        print("Materialized View atualizada com sucesso!")
+        print("Materialized View atualizada!")
     except Exception as e:
-        print(f"Aviso ao atualizar a Materialized View via RPC: {e}")
+        print(f"Aviso ao atualizar View: {e}")
 
 if __name__ == "__main__":
     sync()
