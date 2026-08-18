@@ -1,89 +1,38 @@
 import os
-from datetime import datetime, timezone
 import requests
 from supabase import create_client, Client
 
-USER_ID = os.environ.get("DEEZER_USER_ID")
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-DEEZER_ARL_COOKIE = os.environ.get("DEEZER_ARL_COOKIE")
+DEEZER_ACCESS_TOKEN = os.environ.get("DEEZER_ACCESS_TOKEN")
 
-# COLOQUE O ID NUMÉRICO DA SUA PLAYLIST '!! Favoritas mais atrasadas' AQUI
-PLAYLIST_ID_FIXA = "15652964743"
+PLAYLIST_ID = "15652964743"
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-def get_fresh_token():
-    """Gera um token com permissão de escrita usando o ARL Cookie"""
-    if not DEEZER_ARL_COOKIE:
-        print("ERRO: DEEZER_ARL_COOKIE não encontrado nas Secrets.")
-        return None
-    
-    session = requests.Session()
-    arl_clean = DEEZER_ARL_COOKIE.strip()
-    session.cookies.set('arl', arl_clean, domain='.deezer.com')
-    
-    # App ID 164115 (API Explorer Oficial do Deezer)
-    auth_url = "https://connect.deezer.com/oauth/auth.php?app_id=164115&redirect_uri=https://developers.deezer.com/api/explorer&perms=basic_access,manage_library,delete_library&response_type=token"
-    
-    response = session.get(auth_url, allow_redirects=True)
-    
-    # 1. Tenta extrair o token da URL de redirecionamento final
-    final_url = response.url
-    if 'access_token=' in final_url:
-        token = final_url.split('access_token=')[1].split('&')[0]
-        print("Token do Deezer gerado com sucesso via URL!")
-        return token
-        
-    # 2. Tenta extrair o token do corpo HTML se o status foi 200
-    if 'access_token=' in response.text:
-        token = response.text.split('access_token=')[1].split('&')[0].split('"')[0].split("'")[0]
-        print("Token do Deezer gerado com sucesso via HTML!")
-        return token
+def update_deezer_playlist():
+    print("1. Atualizando View Materializada no Supabase...")
+    try:
+        supabase.rpc("refresh_deezer_view").execute()
+    except Exception as e:
+        print(f"Aviso ao atualizar View: {e}")
 
-    print(f"Erro ao gerar token. Status HTTP: {response.status_code}. O ARL Cookie pode ter expirado.")
-    return None
-
-def fetch_all_favorites(user_id):
-    tracks = []
-    limit = 100
-    index = 0
+    print("2. Lendo as 100 músicas mais atrasadas da View...")
+    res = supabase.from_("vw_deezer_top100_outdated").select("id").execute()
     
-    while True:
-        url = f"https://api.deezer.com/user/{user_id}/tracks?limit={limit}&index={index}"
-        response = requests.get(url)
-        if response.status_code != 200:
-            break
-            
-        data = response.json()
-        items = data.get("data", [])
-        if not items:
-            break
-            
-        tracks.extend(items)
-        if len(items) < limit:
-            break
-        index += limit
-            
-    return tracks
-
-def update_outdated_playlist(token):
-    print(f"Buscando as 50 faixas mais atrasadas do Supabase para a playlist {PLAYLIST_ID_FIXA}...")
-    res = supabase.from_("vw_deezer_favorites_scrobbles") \
-        .select("id, dias_ouvida") \
-        .neq("dias_ouvida", 999999) \
-        .order("dias_ouvida", ascending=False) \
-        .limit(50) \
-        .execute()
-
     if not res.data:
-        print("Nenhuma faixa válida encontrada no Supabase.")
+        print("Nenhuma faixa encontrada na View.")
         return
 
-    novas_faixas = [str(item["id"]) for item in res.data]
+    track_ids = [str(item["id"]) for item in res.data]
+    print(f"Total de faixas recuperadas: {len(track_ids)}")
 
-    # 1. Pega os IDs das faixas que já estão na playlist
-    url_get = f"https://api.deezer.com/playlist/{PLAYLIST_ID_FIXA}/tracks?access_token={token}&limit=100"
+    if not DEEZER_ACCESS_TOKEN:
+        print("ERRO: DEEZER_ACCESS_TOKEN não configurado nas Secrets.")
+        return
+
+    # 3. Limpa a playlist existente no Deezer
+    url_get = f"https://api.deezer.com/playlist/{PLAYLIST_ID}/tracks?access_token={DEEZER_ACCESS_TOKEN}&limit=110"
     res_atuais = requests.get(url_get).json()
     
     if "error" in res_atuais:
@@ -92,55 +41,16 @@ def update_outdated_playlist(token):
 
     faixas_atuais = [str(t['id']) for t in res_atuais.get('data', [])]
 
-    # 2. Apaga faixas antigas (se houver)
     if faixas_atuais:
-        del_url = f"https://api.deezer.com/playlist/{PLAYLIST_ID_FIXA}/tracks?access_token={token}&songs={','.join(faixas_atuais)}"
-        res_del = requests.delete(del_url).json()
-        print(f"Remoção de faixas antigas: {res_del}")
+        url_del = f"https://api.deezer.com/playlist/{PLAYLIST_ID}/tracks?access_token={DEEZER_ACCESS_TOKEN}&songs={','.join(faixas_atuais)}"
+        requests.delete(url_del)
+        print("Faixas antigas removidas da playlist.")
 
-    # 3. Adiciona as 50 faixas novas
-    add_url = f"https://api.deezer.com/playlist/{PLAYLIST_ID_FIXA}/tracks?access_token={token}&songs={','.join(novas_faixas)}"
-    res_add = requests.post(add_url).json()
-    print(f"Adição de 50 novas faixas: {res_add}")
+    # 4. Adiciona os 100 IDs novos
+    url_add = f"https://api.deezer.com/playlist/{PLAYLIST_ID}/tracks?access_token={DEEZER_ACCESS_TOKEN}&songs={','.join(track_ids)}"
+    res_add = requests.post(url_add).json()
 
-def parse_timestamp(ts):
-    if not ts: return None
-    try: return datetime.fromtimestamp(int(ts), tz=timezone.utc).isoformat()
-    except: return None
-
-def sync():
-    print("Sincronizando favoritos com Supabase...")
-    raw_tracks = fetch_all_favorites(USER_ID)
-    records = []
-    for item in raw_tracks:
-        records.append({
-            "id": item.get("id"),
-            "title": item.get("title"),
-            "artist_id": item.get("artist", {}).get("id"),
-            "artist_name": item.get("artist", {}).get("name"),
-            "artist_picture": item.get("artist", {}).get("picture_medium"),
-            "album_id": item.get("album", {}).get("id"),
-            "album_title": item.get("album", {}).get("title"),
-            "album_cover": item.get("album", {}).get("cover_medium"),
-            "link": item.get("link"),
-            "time_add": parse_timestamp(item.get("time_add")),
-            "raw_data": item,
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        })
-
-    for i in range(0, len(records), 100):
-        supabase.table("tbl_deezer_favorites").upsert(records[i:i+100], on_conflict="id").execute()
-    print("Base do Supabase atualizada!")
-
-    try:
-        supabase.rpc("refresh_deezer_view").execute()
-        print("View Materializada recalculada!")
-    except Exception as e:
-        print(f"Aviso ao recalcular View: {e}")
-
-    token = get_fresh_token()
-    if token:
-        update_outdated_playlist(token)
+    print(f"Resultado da atualização no Deezer: {res_add}")
 
 if __name__ == "__main__":
-    sync()
+    update_deezer_playlist()
