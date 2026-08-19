@@ -2,27 +2,23 @@ name: Sincronizar Playlist Top 100 Atrasadas
 
 on:
   schedule:
-    - cron: '0 3 * * *' # Executa diariamente à meia-noite
-  workflow_dispatch: # Permite execução manual
+    - cron: '0 3 * * *'
+  workflow_dispatch:
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout do código
-        uses: actions/checkout@v4
-      
-      - name: Configurar Python
-        uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: Instalar dependências
-        run: pip install requests supabase
+      - run: pip install requests supabase
 
       - name: Rodar atualização da playlist
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          DEEZER_ACCESS_TOKEN: ${{ secrets.DEEZER_ACCESS_TOKEN }}
+          DEEZER_ARL_COOKIE: ${{ secrets.DEEZER_ARL_COOKIE }}
         run: python sync_deezer.py
