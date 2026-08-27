@@ -47,7 +47,7 @@ def update_deezer_playlist():
     except Exception as e:
         print(f"Aviso ao atualizar View: {e}")
 
-    print("2. Lendo as 100 músicas mais atrasadas da View...")
+    print("2. Lendo as 200 músicas mais atrasadas da View...")
     res = supabase.from_("vw_deezer_top100_outdated").select("id").execute()
     
     if not res.data:
@@ -62,9 +62,8 @@ def update_deezer_playlist():
         print("Não foi possível continuar sem um token válido.")
         return
 
-    # 3. Limpa a playlist existente
-    url_get = f"https://api.deezer.com/playlist/{PLAYLIST_ID}/tracks?access_token={token}&limit=110"
-    res_atuais = requests.get(url_get).json()
+    # 3. Limpa a playlist existente (aumente o limit de 110 para 250)
+    url_get = f"https://api.deezer.com/playlist/{PLAYLIST_ID}/tracks?access_token={token}&limit=250"
     
     if "error" in res_atuais:
         print(f"Erro ao acessar playlist no Deezer: {res_atuais['error']}")
