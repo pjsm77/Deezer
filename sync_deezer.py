@@ -62,8 +62,9 @@ def update_deezer_playlist():
         print("Não foi possível continuar sem um token válido.")
         return
 
-    # 3. Limpa a playlist existente (aumente o limit de 110 para 250)
+    # 3. Limpa a playlist existente (limite ajustado para buscar até 250 faixas)
     url_get = f"https://api.deezer.com/playlist/{PLAYLIST_ID}/tracks?access_token={token}&limit=250"
+    res_atuais = requests.get(url_get).json()
     
     if "error" in res_atuais:
         print(f"Erro ao acessar playlist no Deezer: {res_atuais['error']}")
@@ -74,9 +75,9 @@ def update_deezer_playlist():
     if faixas_atuais:
         url_del = f"https://api.deezer.com/playlist/{PLAYLIST_ID}/tracks?access_token={token}&songs={','.join(faixas_atuais)}"
         requests.delete(url_del)
-        print("Faixas antigas removidas.")
+        print("Faixas antigas removidas da playlist.")
 
-    # 4. Insere as 100 novas faixas
+    # 4. Insere as 200 novas faixas
     url_add = f"https://api.deezer.com/playlist/{PLAYLIST_ID}/tracks?access_token={token}&songs={','.join(track_ids)}"
     res_add = requests.post(url_add).json()
 
