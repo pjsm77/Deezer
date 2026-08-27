@@ -40,6 +40,11 @@ def get_fresh_token():
     print(f"Falha ao obter token. Status: {res.status_code}")
     return None
 
+def chunk_list(data_list, chunk_size=100):
+    """Divide uma lista em sublistas menores do tamanho informado."""
+    for i in range(0, len(data_list), chunk_size):
+        yield data_list[i:i + chunk_size]
+
 def update_deezer_playlist():
     print("1. Atualizando View Materializada no Supabase...")
     try:
@@ -47,7 +52,7 @@ def update_deezer_playlist():
     except Exception as e:
         print(f"Aviso ao atualizar View: {e}")
 
-    print("2. Lendo as 200 músicas mais atrasadas da View...")
+    print("2. Lendo as 500 músicas mais atrasadas da View...")
     res = supabase.from_("vw_deezer_top100_outdated").select("id").execute()
     
     if not res.data:
@@ -62,8 +67,8 @@ def update_deezer_playlist():
         print("Não foi possível continuar sem um token válido.")
         return
 
-    # 3. Limpa a playlist existente (limite ajustado para buscar até 250 faixas)
-    url_get = f"https://api.deezer.com/playlist/{PLAYLIST_ID}/tracks?access_token={token}&limit=250"
+    # 3. Limpa todas as faixas existentes na playlist (busca com limit alto)
+    url_get = f"https://api.deezer.com/playlist/{PLAYLIST_ID}/tracks?access_token={token}&limit=1000"
     res_atuais = requests.get(url_get).json()
     
     if "error" in res_atuais:
@@ -73,15 +78,20 @@ def update_deezer_playlist():
     faixas_atuais = [str(t['id']) for t in res_atuais.get('data', [])]
 
     if faixas_atuais:
-        url_del = f"https://api.deezer.com/playlist/{PLAYLIST_ID}/tracks?access_token={token}&songs={','.join(faixas_atuais)}"
-        requests.delete(url_del)
+        print(f"Removendo {len(faixas_atuais)} faixas antigas...")
+        for batch in chunk_list(faixas_atuais, 100):
+            url_del = f"https://api.deezer.com/playlist/{PLAYLIST_ID}/tracks?access_token={token}&songs={','.join(batch)}"
+            requests.delete(url_del)
         print("Faixas antigas removidas da playlist.")
 
-    # 4. Insere as 200 novas faixas
-    url_add = f"https://api.deezer.com/playlist/{PLAYLIST_ID}/tracks?access_token={token}&songs={','.join(track_ids)}"
-    res_add = requests.post(url_add).json()
+    # 4. Insere as 500 novas faixas em lotes de 100
+    print(f"Inserindo {len(track_ids)} novas faixas em lotes...")
+    for index, batch in enumerate(chunk_list(track_ids, 100), start=1):
+        url_add = f"https://api.deezer.com/playlist/{PLAYLIST_ID}/tracks?access_token={token}&songs={','.join(batch)}"
+        res_add = requests.post(url_add).json()
+        print(f"Lote {index} inserido: {res_add}")
 
-    print(f"Resultado da atualização no Deezer: {res_add}")
+    print("Sincronização concluída com sucesso!")
 
 if __name__ == "__main__":
     update_deezer_playlist()
